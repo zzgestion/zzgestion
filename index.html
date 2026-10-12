@@ -231,12 +231,13 @@
   </nav>
 
   <script>
-    // --- CREDENCIALES DE SUPABASE ---
+  // --- CREDENCIALES DE SUPABASE ---
     const SUPABASE_URL = "https://juqzbczzhwgcmtmtbxcf.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_mS2bpHnkMdi1akpwcKvqCw_QePzMeSU";
     const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let casasMap = {}; // id -> nombre
+    let ordenAscendente = true;
 
     function switchTab(tabId, btn) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -264,7 +265,6 @@
     }
 
     // --- CÁLCULO DE BENEFICIO SEGÚN FÓRMULA EXCEL ---
-    // =SI(L="HL";-I/2;SI(L="HW";I*(G-1)/2;SI(L="DRAW";0;SI(L="OK";I*(G-1);SI(L="KO";-I;0)))))
     function calcularBeneficio(resultado, cantidad, cuota) {
       const I = parseFloat(cantidad) || 0;
       const G = parseFloat(cuota) || 0;
@@ -293,8 +293,6 @@
         tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; color:var(--text-muted);">No hay apuestas registradas.</td></tr>`;
         return;
       }
-
-      let casasOptions = Object.entries(casasMap).map(([id, nombre]) => `<option value="${id}">${nombre}</option>`).join('');
 
       tbody.innerHTML = data.map(row => {
         let beneficioCalculado = calcularBeneficio(row.resultado, row.cantidad, row.cuota);
@@ -340,13 +338,11 @@
       }).join('');
     }
 
-    // --- ACTUALIZAR CAMPO INDIVIDUAL EN SUPABASE ---
     async function actualizarCampo(id, campo, valor) {
       const { error } = await db.from('apuestas').update({ [campo]: valor === "" ? null : valor }).eq('id', id);
       if (error) alert("Error al actualizar: " + error.message);
     }
 
-    // --- RECALCULAR FILA CUANDO CAMBIA CUOTA, CANTIDAD O RESULTADO ---
     async function recalcularFila(id) {
       const cuota = document.getElementById(`cuota_${id}`).value;
       const cantidad = document.getElementById(`cant_${id}`).value;
@@ -370,18 +366,16 @@
       }
     }
 
-    // --- DUPLICAR APUESTA ---
     async function duplicarApuesta(id) {
       const { data, error } = await db.from('apuestas').select('*').eq('id', id).single();
       if (error || !data) return;
 
-      delete data.id; // Quitar el ID para que Supabase genere uno nuevo
+      delete data.id;
       const { error: errInsert } = await db.from('apuestas').insert([data]);
       if (errInsert) alert("Error al duplicar: " + errInsert.message);
       else loadApuestas();
     }
 
-    // --- ELIMINAR APUESTA ---
     async function eliminarApuesta(id) {
       if (confirm(`¿Seguro que deseas eliminar la apuesta #${id}?`)) {
         const { error } = await db.from('apuestas').delete().eq('id', id);
@@ -390,7 +384,66 @@
       }
     }
 
-// --- CAMBIAR ESTADO A INACTIVA/ACTIVA CON CONFIRMACIÓN ---
+    // --- GESTIÓN DE CASAS DE APUESTAS ---
+    async function loadCasas() {
+      const { data, error } = await db
+        .from('casas_apuestas')
+        .select('*')
+        .order('nombre', { ascending: ordenAscendente });
+
+      const tbody = document.getElementById('tablaCasasBody');
+      
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--danger);">Error al cargar casas: ${error.message}</td></tr>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No hay casas dadas de alta.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map(c => {
+        const estadoActivo = c.activa !== false;
+        return `
+          <tr>
+            <td>#${c.id}</td>
+            <td><strong>${c.nombre}</strong></td>
+            <td>
+              <span style="color: ${estadoActivo ? 'var(--success)' : 'var(--danger)'}; font-weight: bold;">
+                ${estadoActivo ? 'Activa' : 'Inactiva'}
+              </span>
+            </td>
+            <td>${c.comentarios || ''}</td>
+            <td>
+              <div class="actions-cell" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                <button class="btn ${estadoActivo ? 'btn-danger' : 'btn-primary'}" onclick="confirmarCambioEstadoCasa(${c.id}, '${c.nombre}', ${estadoActivo})">
+                  ${estadoActivo ? 'Inactivar' : 'Activar'}
+                </button>
+                <button class="btn btn-primary" onclick="editarNombreCasaCascada(${c.id}, '${c.nombre}')" title="Editar Nombre">✏️ Nombre</button>
+                <button class="btn btn-primary" onclick="editarComentarioCasa(${c.id}, '${c.comentarios || ''}')" title="Comentarios">💬 Comentario</button>
+                <button class="btn btn-danger" onclick="eliminarCasa(${c.id})"><i class="bi bi-trash"></i></button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function cambiarOrdenCasas() {
+      ordenAscendente = !ordenAscendente;
+      loadCasas();
+    }
+
+    async function crearCasa() {
+      const input = document.getElementById('nuevaCasaNombre');
+      const nombre = input.value.trim();
+      if(!nombre) return;
+      const { error } = await db.from('casas_apuestas').insert([{ nombre, activa: true }]);
+      if(error) alert("Error: " + error.message);
+      else { input.value = ''; loadCasas(); loadCasasMap(); }
+    }
+
     async function confirmarCambioEstadoCasa(id, nombre, estadoActual) {
       const nuevoEstado = !estadoActual;
       const mensaje = estadoActual 
@@ -407,28 +460,25 @@
       }
     }
 
-    // --- EDITAR NOMBRE CON ACTUALIZACIÓN EN CASCADA ---
     async function editarNombreCasaCascada(id, nombreActual) {
-      const nuevoNombre = prompt(`Editar nombre para la casa "${nombreActual}":\n\n(Aviso: Si cambias el nombre, se actualizarán automáticamente todas las apuestas asociadas a este nombre).`, nombreActual);
+      const nuevoNombre = prompt(`Editar nombre para la casa "${nombreActual}":\n\n(Aviso: Si cambias el nombre, se actualizarán automáticamente todas las apuestas asociadas).`, nombreActual);
 
       if (!nuevoNombre || nuevoNombre.trim() === '' || nuevoNombre === nombreActual) return;
 
       const nombreLimpio = nuevoNombre.trim();
 
       if (confirm(`¿Confirmas cambiar el nombre "${nombreActual}" a "${nombreLimpio}" en la casa y en su historial de apuestas?`)) {
-        // 1. Actualizar en la tabla casas_apuestas
         const { error: errCasa } = await db.from('casas_apuestas').update({ nombre: nombreLimpio }).eq('id', id);
         if (errCasa) {
           alert("Error al actualizar la casa: " + errCasa.message);
           return;
         }
 
-        // 2. Actualizar en cascada en la tabla apuestas
         const { error: errApuestas } = await db.from('apuestas').update({ casa_id: nombreLimpio }).eq('casa_id', nombreActual);
         if (errApuestas) {
           alert("Casa actualizada, pero hubo un error actualizando las apuestas: " + errApuestas.message);
         } else {
-          alert("¡Nombre actualizado con éxito en las casas y en el historial de apuestas!");
+          alert("¡Nombre actualizado con éxito!");
         }
 
         loadCasas();
@@ -437,7 +487,6 @@
       }
     }
 
-    // --- EDITAR COMENTARIO LIBRE ---
     async function editarComentarioCasa(id, comentarioActual) {
       const nuevoComentario = prompt('Escribe o modifica el comentario libre para esta casa:', comentarioActual);
       if (nuevoComentario === null) return;
@@ -447,7 +496,17 @@
       else loadCasas();
     }
 
-    // --- EXPORTAR CASAS A CSV ---
+    async function eliminarCasa(id) {
+      if(confirm("¿Eliminar esta casa de apuestas?")) {
+        const { error } = await db.from('casas_apuestas').delete().eq('id', id);
+        if (error) alert("Error: " + error.message);
+        else {
+          loadCasas();
+          loadCasasMap();
+        }
+      }
+    }
+
     async function exportarCasasCSV() {
       const { data, error } = await db.from('casas_apuestas').select('*').order('nombre', { ascending: true });
       if (error || !data || data.length === 0) {
