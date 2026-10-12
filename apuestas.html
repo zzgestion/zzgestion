@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZZ Apuestas - Contabilidad</title>
+  <!-- Iconos y Supabase JS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-dark: #1e293b;
+      --border-color: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38b2ac;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --primary: #3b82f6;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text-main); padding-bottom: 80px; }
+
+    header {
+      background-color: var(--card-dark);
+      border-bottom: 1px solid var(--border-color);
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    header h1 { font-size: 1.25rem; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+
+    main { max-width: 1400px; margin: 20px auto; padding: 0 15px; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Tarjetas de Resumen */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 15px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+
+    .card h3 { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; }
+    .card .value { font-size: 1.5rem; font-weight: bold; }
+
+    /* Tabla Interactiva */
+    .table-container {
+      background: var(--card-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      overflow-x: auto;
+      margin-top: 15px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th { background-color: #0f172a; color: var(--text-muted); font-weight: 600; }
+    tr:hover { background-color: rgba(255,255,255,0.02); }
+
+    input, select {
+      background: #0f172a;
+      border: 1px solid var(--border-color);
+      color: white;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+
+    input:focus, select:focus { border-color: var(--accent); outline: none; }
+
+    .btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-success { background: var(--success); color: white; }
+
+    .actions-cell { display: flex; gap: 6px; }
+
+    /* Navegación inferior móvil */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--card-dark);
+      border-top: 1px solid var(--border-color);
+      display: flex; justify-content: space-around;
+      padding: 10px 0; z-index: 1000;
+    }
+
+    .nav-item {
+      background: none; border: none; color: var(--text-muted);
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      font-size: 0.75rem; cursor: pointer;
+    }
+    .nav-item.active { color: var(--accent); font-weight: bold; }
+    .nav-item i { font-size: 1.2rem; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><i class="bi bi-shield-shaded"></i> ZZ Apuestas</h1>
+    <span id="syncStatus" style="font-size: 0.75rem; color: var(--text-muted);">Conectando a Supabase...</span>
+  </header>
+
+  <main>
+    <!-- PESTAÑA 1: RESUMEN / DASHBOARD -->
+    <section id="tab-dashboard" class="tab-content active">
+      <h2 style="margin-bottom: 15px; font-size: 1.1rem;">Resumen Global y por Casas</h2>
+      <div class="dashboard-grid">
+        <div class="card">
+          <h3>Beneficio Total</h3>
+          <div class="value" id="totBeneficio" style="color: var(--success);">0.00 €</div>
+        </div>
+        <div class="card">
+          <h3>Volumen Apostado</h3>
+          <div class="value" id="totVolumen">0.00 €</div>
+        </div>
+        <div class="card">
+          <h3>Apuestas Registradas</h3>
+          <div class="value" id="totApuestas">0</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 2: TABLA DE APUESTAS (16 CAMPOS EDITABLES) -->
+    <section id="tab-apuestas" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2 style="font-size: 1.1rem;">Historial de Apuestas (16 Campos)</h2>
+        <button class="btn btn-primary" onclick="loadApuestas()"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Año</th>
+              <th>Fecha</th>
+              <th>Casa</th>
+              <th>Tipo</th>
+              <th>Evento</th>
+              <th>Mercado</th>
+              <th>Deporte</th>
+              <th>Error %</th>
+              <th>ROI %</th>
+              <th>Cuota (G)</th>
+              <th>K %</th>
+              <th>Cantidad (€) (I)</th>
+              <th>Resultado (L)</th>
+              <th>Beneficio (€)</th>
+              <th>Libre</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaApuestasBody">
+            <tr><td colspan="17" style="text-align: center; color: var(--text-muted);">Cargando registros...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PESTAÑA 3: CASAS DE APUESTAS -->
+    <section id="tab-casas" class="tab-content">
+      <h2 style="margin-bottom: 12px; font-size: 1.1rem;">Gestión de Casas de Apuestas</h2>
+      <div class="card" style="margin-bottom: 15px;">
+        <div style="display: flex; gap: 10px;">
+          <input type="text" id="nuevaCasaNombre" placeholder="Nombre de la nueva casa..." style="flex: 1;">
+          <button class="btn btn-success" onclick="crearCasa()">Añadir Casa</button>
+        </div>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaCasasBody">
+            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Cargando casas...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- NAVEGACIÓN INFERIOR -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" onclick="switchTab('tab-dashboard', this)"><i class="bi bi-speedometer2"><span>Resumen</span></i></button>
+    <button class="nav-item" onclick="switchTab('tab-apuestas', this)"><i class="bi bi-table"><span>Apuestas</span></i></button>
+    <button class="nav-item" onclick="switchTab('tab-casas', this)"><i class="bi bi-building"><span>Casas</span></i></button>
+  </nav>
+
+  <script>
+    // --- CREDENCIALES DE SUPABASE ---
+    const SUPABASE_URL = "https://juqzbczzhwgcmtmtbxcf.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_mS2bpHnkMdi1akpwcKvqCw_QePzMeSU";
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let casasMap = {}; // id -> nombre
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      btn.classList.add('active');
+      if(tabId === 'tab-apuestas') loadApuestas();
+      if(tabId === 'tab-casas') loadCasas();
+      if(tabId === 'tab-dashboard') loadDashboard();
+    }
+
+    async function initApp() {
+      await loadCasasMap();
+      loadDashboard();
+      document.getElementById('syncStatus').textContent = "Conectado";
+      document.getElementById('syncStatus').style.color = "var(--success)";
+    }
+
+    async function loadCasasMap() {
+      const { data } = await db.from('casas_apuestas').select('*');
+      casasMap = {};
+      if(data) {
+        data.forEach(c => casasMap[c.id] = c.nombre);
+      }
+    }
+
+    // --- CÁLCULO DE BENEFICIO SEGÚN FÓRMULA EXCEL ---
+    // =SI(L="HL";-I/2;SI(L="HW";I*(G-1)/2;SI(L="DRAW";0;SI(L="OK";I*(G-1);SI(L="KO";-I;0)))))
+    function calcularBeneficio(resultado, cantidad, cuota) {
+      const I = parseFloat(cantidad) || 0;
+      const G = parseFloat(cuota) || 0;
+      const L = (resultado || '').trim().toUpperCase();
+
+      if (L === 'HL') return -I / 2;
+      if (L === 'HW') return I * (G - 1) / 2;
+      if (L === 'DRAW') return 0;
+      if (L === 'OK') return I * (G - 1);
+      if (L === 'KO') return -I;
+      return 0;
+    }
+
+    // --- CARGAR APUESTAS ---
+    async function loadApuestas() {
+      await loadCasasMap();
+      const { data, error } = await db.from('apuestas').select('*').order('id', { ascending: false });
+      const tbody = document.getElementById('tablaApuestasBody');
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="17" style="color:var(--danger)">Error al cargar: ${error.message}</td></tr>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="17" style="text-align:center; color:var(--text-muted);">No hay apuestas registradas.</td></tr>`;
+        return;
+      }
+
+      let casasOptions = Object.entries(casasMap).map(([id, nombre]) => `<option value="${id}">${nombre}</option>`).join('');
+
+      tbody.innerHTML = data.map(row => {
+        let beneficioCalculado = calcularBeneficio(row.resultado, row.cantidad, row.cuota);
+        return `
+          <tr data-id="${row.id}">
+            <td>#${row.id}</td>
+            <td><input type="number" value="${row.ano || 2026}" style="width:70px;" onchange="actualizarCampo(${row.id}, 'ano', this.value)"></td>
+            <td><input type="text" value="${row.fecha ? row.fecha.substring(0,10) : ''}" style="width:100px;" onchange="actualizarCampo(${row.id}, 'fecha', this.value)"></td>
+            <td>
+              <select onchange="actualizarCampo(${row.id}, 'casa_id', this.value)">
+                <option value="">-- Casa --</option>
+                ${Object.entries(casasMap).map(([id, nom]) => `<option value="${id}" ${row.casa_id == id ? 'selected' : ''}>${nom}</option>`).join('')}
+              </select>
+            </td>
+            <td>
+              <select onchange="actualizarCampo(${row.id}, 'tipo', this.value)">
+                ${['Sure FB', '1 Value', '2 Values comb.', 'Sure', 'Híbrido'].map(t => `<option ${row.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>
+            </td>
+            <td><input type="text" value="${row.evento || ''}" onchange="actualizarCampo(${row.id}, 'evento', this.value)"></td>
+            <td><input type="text" value="${row.mercado || ''}" onchange="actualizarCampo(${row.id}, 'mercado', this.value)"></td>
+            <td><input type="text" value="${row.deporte || ''}" onchange="actualizarCampo(${row.id}, 'deporte', this.value)"></td>
+            <td><input type="number" step="0.01" value="${row.error_pct || 0}" style="width:70px;" onchange="actualizarCampo(${row.id}, 'error_pct', this.value)"></td>
+            <td><input type="number" step="0.01" value="${row.roi || 0}" style="width:70px;" onchange="actualizarCampo(${row.id}, 'roi', this.value)"></td>
+            <td><input type="number" step="0.01" value="${row.cuota || 0}" style="width:80px;" id="cuota_${row.id}" onchange="recalcularFila(${row.id})"></td>
+            <td><input type="number" step="0.01" value="${row.k_pct || 0}" style="width:70px;" onchange="actualizarCampo(${row.id}, 'k_pct', this.value)"></td>
+            <td><input type="number" step="0.01" value="${row.cantidad || 0}" style="width:90px;" id="cant_${row.id}" onchange="recalcularFila(${row.id})"></td>
+            <td>
+              <select id="res_${row.id}" onchange="recalcularFila(${row.id})">
+                ${['', 'OK', 'KO', 'DRAW', 'HL', 'HW'].map(r => `<option value="${r}" ${row.resultado === r ? 'selected' : ''}>${r || '--'}</option>`).join('')}
+              </select>
+            </td>
+            <td id="bene_${row.id}" style="font-weight:bold; color:${beneficioCalculado >= 0 ? 'var(--success)' : 'var(--danger)'}">${beneficioCalculado.toFixed(2)} €</td>
+            <td><input type="text" value="${row.libre || ''}" onchange="actualizarCampo(${row.id}, 'libre', this.value)"></td>
+            <td>
+              <div class="actions-cell">
+                <button class="btn btn-primary" onclick="duplicarApuesta(${row.id})" title="Duplicar"><i class="bi bi-files"></i></button>
+                <button class="btn btn-danger" onclick="eliminarApuesta(${row.id})" title="Eliminar"><i class="bi bi-trash"></i></button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // --- ACTUALIZAR CAMPO INDIVIDUAL EN SUPABASE ---
+    async function actualizarCampo(id, campo, valor) {
+      const { error } = await db.from('apuestas').update({ [campo]: valor === "" ? null : valor }).eq('id', id);
+      if (error) alert("Error al actualizar: " + error.message);
+    }
+
+    // --- RECALCULAR FILA CUANDO CAMBIA CUOTA, CANTIDAD O RESULTADO ---
+    async function recalcularFila(id) {
+      const cuota = document.getElementById(`cuota_${id}`).value;
+      const cantidad = document.getElementById(`cant_${id}`).value;
+      const resultado = document.getElementById(`res_${id}`).value;
+
+      const beneficio = calcularBeneficio(resultado, cantidad, cuota);
+
+      const { error } = await db.from('apuestas').update({
+        cuota: parseFloat(cuota),
+        cantidad: parseFloat(cantidad),
+        resultado: resultado || null,
+        beneficio: beneficio
+      }).eq('id', id);
+
+      if (!error) {
+        const cellBene = document.getElementById(`bene_${id}`);
+        cellBene.textContent = beneficio.toFixed(2) + " €";
+        cellBene.style.color = beneficio >= 0 ? 'var(--success)' : 'var(--danger)';
+      } else {
+        alert("Error al recalcular: " + error.message);
+      }
+    }
+
+    // --- DUPLICAR APUESTA ---
+    async function duplicarApuesta(id) {
+      const { data, error } = await db.from('apuestas').select('*').eq('id', id).single();
+      if (error || !data) return;
+
+      delete data.id; // Quitar el ID para que Supabase genere uno nuevo
+      const { error: errInsert } = await db.from('apuestas').insert([data]);
+      if (errInsert) alert("Error al duplicar: " + errInsert.message);
+      else loadApuestas();
+    }
+
+    // --- ELIMINAR APUESTA ---
+    async function eliminarApuesta(id) {
+      if (confirm(`¿Seguro que deseas eliminar la apuesta #${id}?`)) {
+        const { error } = await db.from('apuestas').delete().eq('id', id);
+        if (error) alert("Error al eliminar: " + error.message);
+        else loadApuestas();
+      }
+    }
+
+    // --- GESTIÓN DE CASAS ---
+    async function loadCasas() {
+      const { data } = await db.from('casas_apuestas').select('*').order('id', { ascending: true });
+      const tbody = document.getElementById('tablaCasasBody');
+      if(!data || data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No hay casas dadas de alta.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = data.map(c => `
+        <tr>
+          <td>#${c.id}</td>
+          <td><input type="text" value="${c.nombre}" onchange="actualizarCasa(${c.id}, this.value)"></td>
+          <td>${c.activa ? 'Activa' : 'Oculta'}</td>
+          <td>
+            <button class="btn btn-danger" onclick="eliminarCasa(${c.id})"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function crearCasa() {
+      const input = document.getElementById('nuevaCasaNombre');
+      const nombre = input.value.trim();
+      if(!nombre) return;
+      const { error } = await db.from('casas_apuestas').insert([{ nombre, activa: true }]);
+      if(error) alert("Error: " + error.message);
+      else { input.value = ''; loadCasas(); loadCasasMap(); }
+    }
+
+    async function actualizarCasa(id, nombre) {
+      await db.from('casas_apuestas').update({ nombre }).eq('id', id);
+      loadCasasMap();
+    }
+
+    async function eliminarCasa(id) {
+      if(confirm("¿Eliminar esta casa de apuestas?")) {
+        await db.from('casas_apuestas').delete().eq('id', id);
+        loadCasas();
+        loadCasasMap();
+      }
+    }
+
+    // --- DASHBOARD TOTALES ---
+    async function loadDashboard() {
+      const { data } = await db.from('apuestas').select('beneficio, cantidad');
+      if(!data) return;
+      let totalBeneficio = data.reduce((acc, row) => acc + (parseFloat(row.beneficio) || 0), 0);
+      let totalVolumen = data.reduce((acc, row) => acc + (parseFloat(row.cantidad) || 0), 0);
+
+      document.getElementById('totBeneficio').textContent = totalBeneficio.toFixed(2) + " €";
+      document.getElementById('totBeneficio').style.color = totalBeneficio >= 0 ? 'var(--success)' : 'var(--danger)';
+      document.getElementById('totVolumen').textContent = totalVolumen.toFixed(2) + " €";
+      document.getElementById('totApuestas').textContent = data.length;
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
