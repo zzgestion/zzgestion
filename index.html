@@ -390,46 +390,85 @@
       }
     }
 
-    // --- GESTIÓN DE CASAS ---
-    async function loadCasas() {
-      const { data } = await db.from('casas_apuestas').select('*').order('id', { ascending: true });
-      const tbody = document.getElementById('tablaCasasBody');
-      if(!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No hay casas dadas de alta.</td></tr>`;
-        return;
+// --- CAMBIAR ESTADO A INACTIVA/ACTIVA CON CONFIRMACIÓN ---
+    async function confirmarCambioEstadoCasa(id, nombre, estadoActual) {
+      const nuevoEstado = !estadoActual;
+      const mensaje = estadoActual 
+        ? `¿Estás seguro de que deseas marcar como INACTIVA la casa "${nombre}"?`
+        : `¿Deseas activar nuevamente la casa "${nombre}"?`;
+
+      if (confirm(mensaje)) {
+        const { error } = await db.from('casas_apuestas').update({ activa: nuevoEstado }).eq('id', id);
+        if (error) alert("Error al cambiar estado: " + error.message);
+        else {
+          loadCasas();
+          loadCasasMap();
+        }
       }
-      tbody.innerHTML = data.map(c => `
-        <tr>
-          <td>#${c.id}</td>
-          <td><input type="text" value="${c.nombre}" onchange="actualizarCasa(${c.id}, this.value)"></td>
-          <td>${c.activa ? 'Activa' : 'Oculta'}</td>
-          <td>
-            <button class="btn btn-danger" onclick="eliminarCasa(${c.id})"><i class="bi bi-trash"></i></button>
-          </td>
-        </tr>
-      `).join('');
     }
 
-    async function crearCasa() {
-      const input = document.getElementById('nuevaCasaNombre');
-      const nombre = input.value.trim();
-      if(!nombre) return;
-      const { error } = await db.from('casas_apuestas').insert([{ nombre, activa: true }]);
-      if(error) alert("Error: " + error.message);
-      else { input.value = ''; loadCasas(); loadCasasMap(); }
-    }
+    // --- EDITAR NOMBRE CON ACTUALIZACIÓN EN CASCADA ---
+    async function editarNombreCasaCascada(id, nombreActual) {
+      const nuevoNombre = prompt(`Editar nombre para la casa "${nombreActual}":\n\n(Aviso: Si cambias el nombre, se actualizarán automáticamente todas las apuestas asociadas a este nombre).`, nombreActual);
 
-    async function actualizarCasa(id, nombre) {
-      await db.from('casas_apuestas').update({ nombre }).eq('id', id);
-      loadCasasMap();
-    }
+      if (!nuevoNombre || nuevoNombre.trim() === '' || nuevoNombre === nombreActual) return;
 
-    async function eliminarCasa(id) {
-      if(confirm("¿Eliminar esta casa de apuestas?")) {
-        await db.from('casas_apuestas').delete().eq('id', id);
+      const nombreLimpio = nuevoNombre.trim();
+
+      if (confirm(`¿Confirmas cambiar el nombre "${nombreActual}" a "${nombreLimpio}" en la casa y en su historial de apuestas?`)) {
+        // 1. Actualizar en la tabla casas_apuestas
+        const { error: errCasa } = await db.from('casas_apuestas').update({ nombre: nombreLimpio }).eq('id', id);
+        if (errCasa) {
+          alert("Error al actualizar la casa: " + errCasa.message);
+          return;
+        }
+
+        // 2. Actualizar en cascada en la tabla apuestas
+        const { error: errApuestas } = await db.from('apuestas').update({ casa_id: nombreLimpio }).eq('casa_id', nombreActual);
+        if (errApuestas) {
+          alert("Casa actualizada, pero hubo un error actualizando las apuestas: " + errApuestas.message);
+        } else {
+          alert("¡Nombre actualizado con éxito en las casas y en el historial de apuestas!");
+        }
+
         loadCasas();
         loadCasasMap();
+        loadApuestas();
       }
+    }
+
+    // --- EDITAR COMENTARIO LIBRE ---
+    async function editarComentarioCasa(id, comentarioActual) {
+      const nuevoComentario = prompt('Escribe o modifica el comentario libre para esta casa:', comentarioActual);
+      if (nuevoComentario === null) return;
+
+      const { error } = await db.from('casas_apuestas').update({ comentarios: nuevoComentario.trim() }).eq('id', id);
+      if (error) alert("Error al guardar el comentario: " + error.message);
+      else loadCasas();
+    }
+
+    // --- EXPORTAR CASAS A CSV ---
+    async function exportarCasasCSV() {
+      const { data, error } = await db.from('casas_apuestas').select('*').order('nombre', { ascending: true });
+      if (error || !data || data.length === 0) {
+        alert('No hay datos de casas para exportar.');
+        return;
+      }
+
+      let csvContent = "data:text/csv;charset=utf-8,ID,Nombre,Estado,Comentarios\n";
+      data.forEach(row => {
+        const comentariosLimpio = (row.comentarios || '').replace(/"/g, '""');
+        const estadoTexto = row.activa !== false ? 'Activa' : 'Inactiva';
+        csvContent += `"${row.id}","${row.nombre}","${estadoTexto}","${comentariosLimpio}"\n`;
+      });
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `casas_apuestas_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
 
     // --- DASHBOARD TOTALES ---
