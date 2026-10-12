@@ -231,12 +231,12 @@
   </nav>
 
   <script>
-  // --- CREDENCIALES DE SUPABASE ---
+// --- CREDENCIALES DE SUPABASE ---
     const SUPABASE_URL = "https://juqzbczzhwgcmtmtbxcf.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_mS2bpHnkMdi1akpwcKvqCw_QePzMeSU";
     const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let casasMap = {}; // id -> nombre
+    let casasMap = {}; 
     let ordenAscendente = true;
 
     function switchTab(tabId, btn) {
@@ -394,17 +394,23 @@
       const tbody = document.getElementById('tablaCasasBody');
       
       if (error) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--danger);">Error al cargar casas: ${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--danger);">Error al cargar casas: ${error.message}</td></tr>`;
         return;
       }
 
       if (!data || data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;">No hay casas dadas de alta.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">No hay casas dadas de alta.</td></tr>`;
         return;
       }
 
       tbody.innerHTML = data.map(c => {
         const estadoActivo = c.activa !== false;
+        const comentarioCompleto = c.comentarios || '';
+        // Limitar visualmente a 50 caracteres
+        const comentarioCorto = comentarioCompleto.length > 50 
+          ? comentarioCompleto.substring(0, 50) + '...' 
+          : comentarioCompleto;
+
         return `
           <tr>
             <td>#${c.id}</td>
@@ -414,14 +420,14 @@
                 ${estadoActivo ? 'Activa' : 'Inactiva'}
               </span>
             </td>
-            <td>${c.comentarios || ''}</td>
+            <td title="${comentarioCompleto.replace(/"/g, '&quot;')}">${comentarioCorto}</td>
             <td>
               <div class="actions-cell" style="display: flex; gap: 5px; flex-wrap: wrap;">
                 <button class="btn ${estadoActivo ? 'btn-danger' : 'btn-primary'}" onclick="confirmarCambioEstadoCasa(${c.id}, '${c.nombre}', ${estadoActivo})">
                   ${estadoActivo ? 'Inactivar' : 'Activar'}
                 </button>
                 <button class="btn btn-primary" onclick="editarNombreCasaCascada(${c.id}, '${c.nombre}')" title="Editar Nombre">✏️ Nombre</button>
-                <button class="btn btn-primary" onclick="editarComentarioCasa(${c.id}, '${c.comentarios || ''}')" title="Comentarios">💬 Comentario</button>
+                <button class="btn btn-primary" onclick="editarComentarioCasa(${c.id}, '${comentarioCompleto.replace(/'/g, "\\'")}')" title="Comentarios">💬 Comentario</button>
                 <button class="btn btn-danger" onclick="eliminarCasa(${c.id})"><i class="bi bi-trash"></i></button>
               </div>
             </td>
@@ -488,7 +494,7 @@
     }
 
     async function editarComentarioCasa(id, comentarioActual) {
-      const nuevoComentario = prompt('Escribe o modifica el comentario libre para esta casa:', comentarioActual);
+      const nuevoComentario = prompt('Escribe o modifica el comentario libre para esta casa (máx. recomendado):', comentarioActual);
       if (nuevoComentario === null) return;
 
       const { error } = await db.from('casas_apuestas').update({ comentarios: nuevoComentario.trim() }).eq('id', id);
