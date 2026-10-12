@@ -196,13 +196,17 @@
       </div>
     </section>
 
-    <!-- PESTAÑA 3: CASAS DE APUESTAS -->
+   <!-- PESTAÑA 3: CASAS DE APUESTAS -->
     <section id="tab-casas" class="tab-content">
-      <h2 style="margin-bottom: 12px; font-size: 1.1rem;">Gestión de Casas de Apuestas</h2>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2 style="margin: 0; font-size: 1.1rem;">Gestión de Casas de Apuestas</h2>
+        <button class="btn btn-success" onclick="exportarCasasCSV()">📥 Exportar CSV</button>
+      </div>
       <div class="card" style="margin-bottom: 15px;">
         <div style="display: flex; gap: 10px;">
           <input type="text" id="nuevaCasaNombre" placeholder="Nombre de la nueva casa..." style="flex: 1;">
           <button class="btn btn-success" onclick="crearCasa()">Añadir Casa</button>
+          <button class="btn btn-secondary" onclick="cambiarOrdenCasas()" title="Ordenar A-Z / Z-A">🔄 Ordenar</button>
         </div>
       </div>
       <div class="table-container">
@@ -212,11 +216,12 @@
               <th>ID</th>
               <th>Nombre</th>
               <th>Estado</th>
-              <th>Acciones</th>
+              <th>Comentarios</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="tablaCasasBody">
-            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Cargando casas...</td></tr>
+            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Cargando casas...</td></tr>
           </tbody>
         </table>
       </div>
